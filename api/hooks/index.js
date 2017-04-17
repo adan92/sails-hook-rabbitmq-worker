@@ -87,15 +87,16 @@ function setupChannel(conn, options, jobs) {
 
     // create a durable 'direct' exchange, to pass jobs to queues based on exact name match
     return ch.assertExchange(exchangeName, 'direct', {
-      durable: true
+      durable: false
     }).then(() => {
       // create a method that accepts the job name and the message data and publishes it to the appropriate queue
+        /*
       sails.createJob = (queueName, payload, options) => {
         options = Object.assign({
           persistent: true
         }, options)
         sails.rabbitworker.channel.publish(exchangeName, queueName, new Buffer(payload), options)
-      }
+      }*/
 
       // only worry about registering workers on sails instances that are running jobs
       if (!options.runJobs) return
@@ -143,22 +144,17 @@ function registerWorkers(channel, exchangeName, jobs, options) {
     const durable = jobData.durable === false ? false : true
 
     // create a queue based on job name (if it already exists nothing happens)
-    return channel.assertQueue(jobData.name, {
-      durable
+    return channel.assertQueue('', {
+      exclusive:durable
     }).then(() => {
       // bind the queue to the proper exchange
-      return channel.bindQueue(jobData.name, exchangeName, jobData.name)
-    }).then(() => {
-      // default to prefetch = 1, can be overridden in job definition
-      const prefetchCount = jobData.prefetchCount === undefined ? 1 : jobData.prefetchCount
-      // TODO prefetch looks like it is at the channel level, but we are redifining it per job
-      channel.prefetch(prefetchCount)
+      return channel.bindQueue(jobData.name, exchangeName, jobData.bindingKey)
     }).then(() => {
       // get wrapped worker function that automatically handles ack/nack
       const ackWorker = createWrappedWorker(channel, jobData, options)
 
       channel.consume(jobData.name, ackWorker, {
-        noAck: false
+        noAck: true
       })
     })
   }))
